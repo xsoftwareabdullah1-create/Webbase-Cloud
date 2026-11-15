@@ -1,0 +1,28 @@
+services:
+  panel:
+    build: .
+    container_name: webbase-cloud-panel
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+    networks: [webbase-cloud]
+  proxy:
+    image: caddy:2
+    container_name: webbase-cloud-proxy
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [webbase-cloud]
+networks:
+  webbase-cloud:
+    name: webbase-cloud
+volumes:
+  caddy_data:
+  caddy_config:
