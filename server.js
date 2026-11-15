@@ -55,6 +55,7 @@ async function deploy(a){
   log(a.id,"Building Docker image…");
   const buildResult=await docker(["build","--pull","-t",image,dir],600000);
   for(const line of (buildResult.stdout+"\n"+buildResult.stderr).split(/\r?\n/).filter(Boolean).slice(-40))log(a.id,"BUILD: "+line.slice(0,2500));
+  const imageHealth=await docker(["inspect","--format","{{if .Config.Healthcheck}}yes{{else}}no{{end}}",image],10000),hasImageHealth=imageHealth.stdout.trim()==="yes";
   log(a.id,"Starting replacement container while the previous version remains available…");
   const saved=db.prepare("SELECT env_ciphertext FROM apps WHERE id=?").get(a.id),env=decryptEnv(saved?.env_ciphertext),envFile=path.join(DATA,".env-"+a.id);
   const envLines=Object.entries({...env,PORT:String(a.port)}).map(([k,v])=>k+"="+v).join("\n")+"\n";
