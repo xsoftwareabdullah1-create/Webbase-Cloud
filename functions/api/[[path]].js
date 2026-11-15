@@ -37,7 +37,7 @@ function repoInfo(value){
  return {provider:u.hostname==="github.com"?"github":"gitlab",owner:parts[0],name:parts[1]};
 }
 async function addLog(db,id,message){await db.prepare("INSERT INTO logs(app_id,message,created_at) VALUES(?,?,?)").bind(id,String(message).slice(0,2000),new Date().toISOString()).run();}
-export async function onRequest({request,env}){
+async function handleRequest({request,env}){
  const url=new URL(request.url),path=url.pathname.replace(/^\/api\/?/,"").replace(/\/$/,""),method=request.method;
  if(path==="health"&&method==="GET")return json({ok:true,service:"webbase-cloud-pages-functions",database:!!env.DB,cloudflareApi:!!(env.CLOUDFLARE_API_TOKEN&&env.CLOUDFLARE_ACCOUNT_ID),authConfigured:!!(env.ADMIN_EMAIL&&env.ADMIN_PASSWORD&&env.JWT_SECRET&&env.JWT_SECRET.length>=32)});
  if(!env.DB)return json({error:"D1 database is not connected. In Cloudflare Pages > Settings > Bindings, add a D1 binding named DB, then redeploy."},503);
@@ -111,4 +111,18 @@ export async function onRequest({request,env}){
   }
  }
  return json({error:"API route not found"},404);
+}
+
+
+// Normalize unexpected route, JSON parsing, D1 and Cloudflare API failures into JSON responses.
+export async function onRequest(context){
+ try {
+  return await handleRequest(context);
+ } catch (error) {
+  const message = error instanceof SyntaxError
+   ? "Invalid JSON request body. Check the submitted form data."
+   : (error && typeof error.message === "string" ? error.message : "Unexpected server error");
+  const status = error instanceof SyntaxError ? 400 : 502;
+  return json({ error: message }, status);
+ }
 }
