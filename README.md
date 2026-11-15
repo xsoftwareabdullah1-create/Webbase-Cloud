@@ -1,264 +1,124 @@
-# Webbase Cloud — App Hosting Platform
+# Webbase Cloud
 
-<p align="center"><strong>A self-hosted deployment workspace for GitHub and GitLab applications.</strong><br>Deployment Console · Docker Builds · App Containers · Live Logs · Resource Limits · Apache-2.0</p>
+<p align="center"><strong>A Git-based site deployment dashboard built for Cloudflare Pages.</strong><br>Pages API · Pages Functions · D1 Database · GitHub / GitLab · Apache-2.0</p>
 
-<p align="center">
-<img src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js 20+">
-<img src="https://img.shields.io/badge/Docker-Engine-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Engine">
-<img src="https://img.shields.io/badge/Caddy-Reverse_Proxy-1F88C0?style=for-the-badge&logo=caddy&logoColor=white" alt="Caddy">
-<img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge" alt="Apache-2.0">
-</p>
+## Live dashboard
 
-## Overview
+- Production site: https://webbase-cloud.pages.dev
+- API health: https://webbase-cloud.pages.dev/api/health
 
-Webbase Cloud is a self-hosted application deployment control panel. Connect a public GitHub or GitLab repository, build its root-level Dockerfile, and run the resulting container on your own Linux server. Manage deployments, inspect logs, restart or stop apps, and open each app through its assigned public port.
+## Cloudflare deployment mode
 
-**Webbase Cloud is an independent project. It is not an official Render, Railway, Vercel or Heroku product, and it does not provide compute or free hosting by itself. You must supply and maintain a server or VM.**
+The Cloudflare version uses:
+- **Cloudflare Pages** for the dashboard and deployed static sites
+- **Pages Functions** for the authenticated API
+- **D1** for application metadata and audit logs
+- **Cloudflare Pages API** to create, redeploy, inspect and delete connected Pages projects
 
-## Website
+This mode does not need a VPS, Docker daemon, SSH server, or always-on phone. It is designed for static sites and applications supported by Cloudflare Pages. It does **not** run arbitrary Dockerfiles, long-running containers, or general-purpose server processes.
 
-- Hosting dashboard: `/`
-- Health endpoint: `/api/health`
-- System status (authenticated): `/api/system`
+## One-time setup
 
-## Features
+The Git-connected Pages project must use the repository root as its root directory and `public` as its build output directory. Leave the build command empty for this dashboard.
 
-- Private single-administrator sign-in using bcrypt password hashing and JWT sessions
-- Public and private GitHub/GitLab repository deployment using encrypted read-only access tokens
-- Multi-node deployments through Docker Engine over SSH
-- Docker image builds from a root-level `Dockerfile`
-- App lifecycle controls: deploy, redeploy, stop, restart and delete
-- Deployment status, Docker health status and per-app build/runtime logs
-- Automatic per-node allocation of public host ports from `20000-20100`
-- Dashboard links to running applications and custom domains
-- Per-app custom domains with Caddy-managed automatic HTTPS
-- Per-container defaults of 512 MiB memory, 1 CPU and 256 processes
-- Per-app environment variables and private-repository credentials encrypted at rest with AES-256-GCM
-- Optional Docker health checks configured per application
-- Secret values are write-only in the dashboard; only variable names are listed
-- Persistent SQLite metadata and deployment logs
-- Caddy reverse proxy in Docker Compose for the dashboard and custom app domains
-- Remote-node app routing through the control server's Caddy proxy
-- Domain-based automatic HTTPS for the dashboard when DNS and ports 80/443 are configured
-- Request rate limiting, security headers and bounded JSON request bodies
+### 1. Connect D1
 
-## Architecture
+1. Open Cloudflare Dashboard → **Workers & Pages** → **D1**.
+2. Create a database named `webbase-cloud-db`.
+3. Open the `webbase-cloud` Pages project → **Settings → Bindings**.
+4. Add a **D1 database binding** with variable name exactly `DB` and select the database.
+5. Save and redeploy the Pages project.
 
-```text
-                         Internet
-                            │
-                       HTTP / HTTPS
-                            │
-                            ▼
-                     Caddy Reverse Proxy
-                            │
-                    Private Docker Network
-                            │
-                            ▼
-                    Express Control Panel
-                       │            │
-                SQLite Metadata   Local + Remote Docker Engines
-                       │            │
-                       │       Build / Run / Stop over SSH
-                       │            │
-                       │            ▼
-                       │       App Containers
-                       │            │
-                       └──── Host Ports 20000-20100
-                                    │
-                                    ▼
-                              Public App URLs
-```
+The API creates its tables on the first request. The equivalent SQL schema is also in `migrations/0001_initial.sql`.
 
-## Requirements
+### 2. Add Pages environment variables
 
-- Ubuntu 22.04 or 24.04 recommended
-- Docker Engine
-- Docker Compose plugin
-- Public IPv4 address or a domain pointed to the server
-- TCP ports 80 and 443 open for the dashboard proxy
-- TCP ports 20000-20100 open for deployed applications
-- A server with enough CPU, memory and disk for the panel and your app containers
-- For remote nodes: Docker Engine, SSH access from the panel host, and the app port range open on each node
+Open the Pages project → **Settings → Variables and Secrets**. Add these for the **Production** environment:
 
-## Run with Docker Compose
+| Variable | Type | Requirement |
+| --- | --- | --- |
+| `ADMIN_EMAIL` | Plain text or secret | Required |
+| `ADMIN_PASSWORD` | Secret | Required; at least 12 characters |
+| `JWT_SECRET` | Secret | Required; random value of at least 32 characters |
+| `CLOUDFLARE_ACCOUNT_ID` | Plain text | Required |
+| `CLOUDFLARE_API_TOKEN` | Secret | Required; token with Cloudflare Pages **Write** permission for this account |
 
-1. Clone the repository:
+Use a unique password and random JWT secret. Do not put secrets in GitHub files, commit messages, screenshots, or chat. After adding or changing bindings/secrets, trigger a new Pages deployment so Functions receive them.
 
-   ```bash
-   git clone https://github.com/xsoftwareabdullah1-create/Webbase-Cloud.git
-   cd Webbase-Cloud
-   ```
+### 3. Authorize Git repositories
 
-2. Create your environment file:
+In Cloudflare Pages, connect the GitHub or GitLab account and authorize the repositories you want Webbase Cloud to deploy. The API can only create Pages projects for repositories already authorized in that Cloudflare account.
 
-   ```bash
-   cp .env.example .env
-   ```
+### 4. Sign in
 
-3. Edit `.env`. Set a unique random JWT secret, a strong administrator password, and your server's public IP or hostname.
+Open https://webbase-cloud.pages.dev and sign in with `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 
-4. Start Webbase Cloud:
+## Create a site
 
-   ```bash
-   docker compose up -d --build
-   ```
+In **New site**, provide:
+- A site name
+- A public GitHub or GitLab HTTPS repository URL
+- Production branch (usually `main`)
+- Build command (leave blank for plain HTML)
+- Build output directory (for example `public`, `dist`, or `build`)
 
-5. Open `http://YOUR_SERVER_IP` and sign in with the administrator credentials from `.env`.
+The repository is connected to Cloudflare Pages using the Cloudflare Pages API. Cloudflare performs the build and hosts the result. Git provider authorization is managed by Cloudflare; private repository access is not handled by storing personal access tokens in this app.
 
-6. Confirm Docker is online in the dashboard's system status before creating a deployment.
-7. To add remote nodes, ensure the panel host has SSH keys and known-host entries in `~/.ssh` (the supplied Compose file mounts this directory read-only). Open **Manage nodes**, then add the SSH endpoint (for example, `ssh://ubuntu@203.0.113.10`) and the node's public IP/hostname. Webbase Cloud tests the connection and creates the app network automatically.
+## Dashboard capabilities
 
-The remote SSH user must be allowed to access Docker on that host (commonly membership in the `docker` group). Treat that account as root-equivalent. Use a dedicated deployment key with restrictive file permissions; the panel entrypoint copies SSH material into its own root-owned `.ssh` directory at startup. For example, prepare a key and trust the remote host before registering it:
-
-```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
-ssh-copy-id -i ~/.ssh/id_ed25519.pub ubuntu@NODE_IP
-ssh-keyscan -H NODE_IP >> ~/.ssh/known_hosts
-```
-
-Remote nodes must allow the configured app port range (default `20000-20100`). The control panel clones the source and sends the Docker build context to the selected Docker Engine over SSH. Select the target node in the deployment form.
-
-The panel is connected to the Docker socket so it can build and manage app containers. The panel's internal port is served through Caddy on the Compose network. Do not expose the Docker socket or dashboard to untrusted users.
-
-## Domain and HTTPS
-
-For a domain, point its DNS A/AAAA record to your server. Edit the site address in `Caddyfile` from `:80` to your domain, for example:
-
-```caddy
-cloud.example.com {
-  encode zstd gzip
-  reverse_proxy panel:8080
-}
-```
-
-Then restart the proxy:
-
-```bash
-docker compose restart proxy
-```
-
-Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. The same Caddy instance also routes configured app domains to their containers and obtains HTTPS certificates automatically. For an app domain, add an A/AAAA record pointing to the control server running Caddy, then set the domain in that app's dashboard settings. If the app is on a remote node, allow the app port range from the control server to that node; Caddy proxies to the node's public host and allocated port. Ports 80 and 443 must be reachable. Direct allocated host-port URLs remain HTTP. The panel container must have the Caddyfile mounted at `/app/Caddyfile` (the supplied Compose file already does this). Webbase Cloud writes managed app-domain site blocks into that file and asks Caddy to reload its configuration.
-
-## Environment variables
-
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `PORT` | No | `8080` | Internal dashboard HTTP port |
-| `JWT_SECRET` | Yes | — | Random signing secret; minimum 32 characters |
-| `ADMIN_EMAIL` | No | `admin@example.com` | Initial administrator email |
-| `ADMIN_PASSWORD` | Yes | — | Initial administrator password; minimum 12 characters |
-| `DATA_DIR` | No | `./data` | SQLite database and app checkout directory |
-| `DOCKER_NETWORK` | No | `webbase-cloud` | Docker network used by deployed containers |
-| `PUBLIC_HOST` | Recommended | `localhost` | Public server IP or hostname used in app URLs |
-| `PUBLIC_DOMAIN` | No | — | Alternative public hostname setting |
-| `PUBLIC_SCHEME` | No | `http` | Scheme used for generated app URLs |
-| `APP_PORT_START` | No | `20000` | First host port in the allocation range |
-| `APP_PORT_END` | No | `20100` | Last host port in the allocation range |
-| `APP_MEMORY_LIMIT` | No | `512m` | Per-app container memory limit |
-| `APP_CPU_LIMIT` | No | `1` | Per-app container CPU limit |
-| `CADDYFILE_PATH` | No | `./Caddyfile` | Caddy config file mounted into the panel container |
-| `CADDY_CONTAINER` | No | `webbase-cloud-proxy` | Caddy container name used for config reloads |
-| `APP_ENCRYPTION_KEY` | Required for env vars and private repo tokens | — | 32-byte encryption key as 64 hex characters or base64; keep stable and back it up securely |
-
-Generate a secret rather than using the example placeholder:
-
-```bash
-openssl rand -hex 32
-# Use the output as APP_ENCRYPTION_KEY
-```
-
-Never commit `.env`, credentials, API keys or other secrets to Git. Keep `APP_ENCRYPTION_KEY` backed up and unchanged: losing or rotating it without decrypting/re-encrypting existing records makes saved app variables unreadable. The key protects values at rest, but the Docker host administrator can still access running container environments.
+- Single-admin login with signed 12-hour sessions
+- D1-backed application registry and activity logs
+- Create Cloudflare Pages projects from authorized GitHub/GitLab repositories
+- Trigger redeployments for the configured branch
+- Read deployment status and deployment logs through the Cloudflare API
+- Add custom domains to Pages projects
+- Delete managed Pages projects
+- Basic login attempt throttling
 
 ## API
 
-Protected endpoints require the header `Authorization: Bearer YOUR_TOKEN`. Obtain a token from the login endpoint.
+All protected endpoints use `Authorization: Bearer <token>`.
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| POST | `/api/auth/login` | Sign in as administrator |
-| GET | `/api/me` | Get the signed-in administrator |
-| GET | `/api/system` | Check local Docker and host configuration |
-| GET | `/api/nodes` | List local and remote Docker nodes with connection status |
-| POST | `/api/nodes` | Register and test a remote Docker-over-SSH node |
-| DELETE | `/api/nodes/:id` | Remove an unused remote node |
-| GET | `/api/apps` | List applications and their deployment status |
-| POST | `/api/apps` | Register and queue a deployment on a selected node |
-| GET | `/api/apps/:id/logs` | Read recent deployment logs |
-| GET | `/api/apps/:id/env` | List saved environment variable names (not values) |
-| GET/PUT/DELETE | `/api/apps/:id/repository-auth` | Check, set or remove an encrypted Git token |
-| PUT | `/api/apps/:id/domain` | Set or remove the app's custom domain and reload Caddy |
-| PUT | `/api/apps/:id/env` | Add/update variables; send `null` to delete a key |
-| POST | `/api/apps/:id/action` | Deploy, stop or restart an application |
-| DELETE | `/api/apps/:id` | Remove an application |
-| GET | `/api/health` | Public service health check |
+| GET | `/api/health` | Check Pages Functions, D1 binding and Pages API configuration |
+| POST | `/api/auth/login` | Admin sign-in |
+| GET | `/api/me` | Current admin |
+| GET | `/api/system` | Cloudflare platform status |
+| GET/POST | `/api/apps` | List or create Pages projects |
+| POST | `/api/apps/:id/action` | Redeploy a site |
+| GET | `/api/apps/:id/logs` | Activity and Cloudflare deployment logs |
+| PUT | `/api/apps/:id/domain` | Add a custom domain |
+| DELETE | `/api/apps/:id` | Delete a managed Pages project |
 
-Create-app request example:
+## Local development
 
-```json
-{
-  "name": "My Website",
-  "repo": "https://github.com/owner/repository",
-  "branch": "main",
-  "port": 3000
-}
+Cloudflare Pages Functions require the Cloudflare runtime. Use Wrangler with a local D1 database:
+
+```bash
+npm install
+npx wrangler pages dev public --d1 DB=<LOCAL_D1_DATABASE_ID>
 ```
 
-The repository must contain a `Dockerfile` in its root directory. Public repositories need no token. For private repositories, provide a GitHub fine-grained token with read-only Contents access or a GitLab deploy token with read_repository scope. Tokens are encrypted at rest and are not returned by the API. Set `APP_ENCRYPTION_KEY` before saving credentials. In the dashboard, use the `Access` control to add or replace a token for an existing app; redeploy after changing it. The app must listen on the configured container port and bind to `0.0.0.0`, not only `127.0.0.1`. You can provide an optional health-check command at deployment time; it is passed to Docker with a 30-second interval, 5-second timeout, 3 retries and a 20-second start period. Alternatively, define Docker `HEALTHCHECK` in the app's Dockerfile. The health command must exist inside the app image. Webbase Cloud waits up to 120 seconds for configured health checks to pass before switching the custom-domain route. Docker reports `healthy`, `unhealthy` or `starting`; apps without a configured check show `none`.
+For production, configure the D1 binding and secrets in the Cloudflare Pages dashboard. Never use production credentials in local development.
 
-## Deployment behavior
+## Legacy Docker deployment
 
-When a deployment is queued, Webbase Cloud clones the selected branch, builds the Docker image, starts a replacement container alongside the previous version, and waits for its configured Docker health check before switching the custom-domain route. The previous container is removed only after a successful switch. If the build or health check fails, the previous running version is kept. The dashboard records deployment state and logs.
+The repository still contains the original Docker Compose deployment for users who operate their own Linux VPS. `Dockerfile`, `docker-compose.yml`, `server.js`, and `Caddyfile` belong to that legacy self-hosted mode. They are **not** used by the Cloudflare Pages deployment. The Pages version does not expose Docker management endpoints.
 
-Each running app receives an available host port from the configured range. Its URL has this form:
+## Security
 
-```text
-http://YOUR_SERVER_IP:20000
-```
+- Keep `CLOUDFLARE_API_TOKEN` secret and grant only the Pages Write permission needed by this app.
+- Use a strong admin password and a unique random `JWT_SECRET`.
+- The dashboard is a single-admin control panel, not a public multi-tenant service.
+- Anyone who can use the admin dashboard can create and delete Pages projects within the scope of the configured API token.
+- Keep the Cloudflare account protected with MFA and review API token permissions regularly.
+- Do not expose tokens or passwords in screenshots or chat.
 
-The actual port is allocated automatically. Ensure the host firewall and cloud-provider network rules permit the configured range.
+## Cost
 
-## Current limitations
-
-This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, automatic load balancing, node failover, moving existing apps between nodes, billing, managed databases or automated backups. Node selection is manual. Custom-domain traffic is switched to the new container after its configured health check passes; direct host-port URLs may change on redeploy. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Secret values are write-only through the dashboard and API. App containers have basic resource limits, not production-grade isolation.
-
-## Security and cost
-
-- Keep the dashboard private and restrict access with a firewall or VPN. Use HTTPS for the dashboard before entering repository tokens; do not send credentials over plain HTTP.
-- The Docker socket is highly privileged and effectively grants root-level control of the host.
-- Dockerfiles from deployed repositories execute build instructions on your server. Deploy only code you trust.
-- Use narrowly scoped read-only repository tokens. They are encrypted at rest, but the server administrator controls the runtime and can access credentials during cloning.
-- Remote Docker-over-SSH nodes grant the panel root-equivalent control of each remote Docker host. Protect SSH private keys and limit node access to trusted operators.
-- Use a strong administrator password and a unique `JWT_SECRET`.
-- Back up the `data/` directory and your server separately.
-- Hosting costs depend on the server provider and its limits. Webbase Cloud itself does not create an always-free VM or guarantee free 24/7 compute.
-
-Do not use this MVP as an untrusted public multi-tenant hosting service.
-
-## Project structure
-
-```text
-Webbase-Cloud/
-├── public/
-│   └── index.html
-├── docker-entrypoint.sh     # SSH key setup for remote nodes
-├── .dockerignore            # Excludes secrets and runtime data from builds
-├── data/                    # Runtime database and app checkouts
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── server.js                # Express API and deployment controller
-├── Dockerfile               # Panel container image
-├── docker-compose.yml       # Panel, Caddy and shared network
-├── Caddyfile                # Dashboard reverse proxy
-├── package.json
-├── .env.example
-├── .gitignore
-└── LICENSE
-```
+Webbase Cloud does not itself charge for hosting. This deployment uses Cloudflare services and remains subject to the limits and terms of the Cloudflare plan on the account. Keep usage within the Free plan limits and do not enable paid add-ons or upgrade plans if the requirement is zero payment. Cloudflare may change plan limits; this project cannot guarantee unlimited or lifetime free compute.
 
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).
-
-<p align="center">Built and maintained by <strong>Abdullah</strong><br><sub>Copyright © 2026 Abdullah. Licensed under Apache-2.0.</sub></p>
