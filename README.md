@@ -109,10 +109,10 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 6. Confirm Docker is online in the dashboard's system status before creating a deployment.
 7. To add remote nodes, ensure the panel host has SSH keys and known-host entries in `~/.ssh` (the supplied Compose file mounts this directory read-only). Open **Manage nodes**, then add the SSH endpoint (for example, `ssh://ubuntu@203.0.113.10`) and the node's public IP/hostname. Webbase Cloud tests the connection and creates the app network automatically.
 
-The remote SSH user must be allowed to access Docker on that host (commonly membership in the `docker` group). Treat that account as root-equivalent. For example, prepare a key and trust the remote host before registering it:
+The remote SSH user must be allowed to access Docker on that host (commonly membership in the `docker` group). Treat that account as root-equivalent. Use a dedicated deployment key with restrictive file permissions; the panel entrypoint copies SSH material into its own root-owned `.ssh` directory at startup. For example, prepare a key and trust the remote host before registering it:
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
 ssh-copy-id -i ~/.ssh/id_ed25519.pub ubuntu@NODE_IP
 ssh-keyscan -H NODE_IP >> ~/.ssh/known_hosts
 ```
