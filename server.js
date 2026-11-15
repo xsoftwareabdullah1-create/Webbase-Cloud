@@ -73,7 +73,7 @@ async function deploy(a){
   log(a.id,"Deployment successful: "+(a.domain?"https://"+a.domain:publicUrl(hostPort)));
  }catch(e){
   if(switched){db.prepare("UPDATE apps SET container=?,status=?,host_port=?,pending_host_port=NULL,last_error=? WHERE id=?").run(oldContainer,wasRunning?"running":"failed",oldHostPort,String(e.message).slice(0,900),a.id);if(a.domain){try{await syncCaddy()}catch(x){log(a.id,"WARNING: Previous proxy route restore failed: "+x.message)}}}
-  else db.prepare("UPDATE apps SET container=?,status=?,host_port=?,last_error=? WHERE id=?").run(oldContainer,wasRunning?"running":"failed",oldHostPort,String(e.message).slice(0,900),a.id);
+  else db.prepare("UPDATE apps SET container=?,status=?,host_port=?,pending_host_port=NULL,last_error=? WHERE id=?").run(oldContainer,wasRunning?"running":"failed",oldHostPort,String(e.message).slice(0,900),a.id);
   if(started){try{await docker(["rm","-f",nextContainer],30000)}catch{}}
   const output=[e.stdout,e.stderr].filter(Boolean).join("\n").split(/\r?\n/).filter(Boolean).slice(-40);
   for(const line of output)log(a.id,"BUILD: "+line.slice(0,2500));
