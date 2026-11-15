@@ -57,9 +57,9 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
                             ▼
                     Express Control Panel
                        │            │
-                SQLite Metadata   Docker Engine
+                SQLite Metadata   Local + Remote Docker Engines
                        │            │
-                       │       Build / Run / Stop
+                       │       Build / Run / Stop over SSH
                        │            │
                        │            ▼
                        │       App Containers
@@ -241,6 +241,8 @@ Do not use this MVP as an untrusted public multi-tenant hosting service.
 Webbase-Cloud/
 ├── public/
 │   └── index.html
+├── docker-entrypoint.sh     # SSH key setup for remote nodes
+├── .dockerignore            # Excludes secrets and runtime data from builds
 ├── data/                    # Runtime database and app checkouts
 ├── .github/
 │   └── workflows/
