@@ -39,7 +39,7 @@ function repoInfo(value){
 async function addLog(db,id,message){await db.prepare("INSERT INTO logs(app_id,message,created_at) VALUES(?,?,?)").bind(id,String(message).slice(0,2000),new Date().toISOString()).run();}
 export async function onRequest({request,env}){
  const url=new URL(request.url),path=url.pathname.replace(/^\/api\/?/,"").replace(/\/$/,""),method=request.method;
- if(path==="health"&&method==="GET")return json({ok:true,service:"webbase-cloud-pages-functions",database:!!env.DB,cloudflareApi:!!(env.CLOUDFLARE_API_TOKEN&&env.CLOUDFLARE_ACCOUNT_ID)});
+ if(path==="health"&&method==="GET")return json({ok:true,service:"webbase-cloud-pages-functions",database:!!env.DB,cloudflareApi:!!(env.CLOUDFLARE_API_TOKEN&&env.CLOUDFLARE_ACCOUNT_ID),authConfigured:!!(env.ADMIN_EMAIL&&env.ADMIN_PASSWORD&&env.JWT_SECRET&&env.JWT_SECRET.length>=32)});
  if(!env.DB)return json({error:"D1 database is not connected. In Cloudflare Pages > Settings > Bindings, add a D1 binding named DB, then redeploy."},503);
  try{await schema(env.DB)}catch(e){return json({error:"D1 initialization failed: "+e.message},503)}
  if(path==="auth/login"&&method==="POST"){
