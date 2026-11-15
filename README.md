@@ -25,10 +25,11 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 
 - Private single-administrator sign-in using bcrypt password hashing and JWT sessions
 - Public and private GitHub/GitLab repository deployment using encrypted read-only access tokens
+- Multi-node deployments through Docker Engine over SSH
 - Docker image builds from a root-level `Dockerfile`
 - App lifecycle controls: deploy, redeploy, stop, restart and delete
 - Deployment status, Docker health status and per-app build/runtime logs
-- Automatic allocation of public host ports from `20000-20100`
+- Automatic per-node allocation of public host ports from `20000-20100`
 - Dashboard links to running applications and custom domains
 - Per-app custom domains with Caddy-managed automatic HTTPS
 - Per-container defaults of 512 MiB memory, 1 CPU and 256 processes
@@ -36,7 +37,8 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 - Optional Docker health checks configured per application
 - Secret values are write-only in the dashboard; only variable names are listed
 - Persistent SQLite metadata and deployment logs
-- Caddy reverse proxy in Docker Compose for the dashboard
+- Caddy reverse proxy in Docker Compose for the dashboard and custom app domains
+- Remote-node app routing through the control server's Caddy proxy
 - Domain-based automatic HTTPS for the dashboard when DNS and ports 80/443 are configured
 - Request rate limiting, security headers and bounded JSON request bodies
 
@@ -77,6 +79,7 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 - TCP ports 80 and 443 open for the dashboard proxy
 - TCP ports 20000-20100 open for deployed applications
 - A server with enough CPU, memory and disk for the panel and your app containers
+- For remote nodes: Docker Engine, SSH access from the panel host, and the app port range open on each node
 
 ## Run with Docker Compose
 
@@ -104,6 +107,17 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 5. Open `http://YOUR_SERVER_IP` and sign in with the administrator credentials from `.env`.
 
 6. Confirm Docker is online in the dashboard's system status before creating a deployment.
+7. To add remote nodes, ensure the panel host has SSH keys and known-host entries in `~/.ssh` (the supplied Compose file mounts this directory read-only). Open **Manage nodes**, then add the SSH endpoint (for example, `ssh://ubuntu@203.0.113.10`) and the node's public IP/hostname. Webbase Cloud tests the connection and creates the app network automatically.
+
+The remote SSH user must be allowed to access Docker on that host (commonly membership in the `docker` group). Treat that account as root-equivalent. For example, prepare a key and trust the remote host before registering it:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519
+ssh-copy-id -i ~/.ssh/id_ed25519.pub ubuntu@NODE_IP
+ssh-keyscan -H NODE_IP >> ~/.ssh/known_hosts
+```
+
+Remote nodes must allow the configured app port range (default `20000-20100`). The control panel clones the source and sends the Docker build context to the selected Docker Engine over SSH. Select the target node in the deployment form.
 
 The panel is connected to the Docker socket so it can build and manage app containers. The panel's internal port is served through Caddy on the Compose network. Do not expose the Docker socket or dashboard to untrusted users.
 
@@ -124,7 +138,7 @@ Then restart the proxy:
 docker compose restart proxy
 ```
 
-Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. The same Caddy instance also routes configured app domains to their containers and obtains HTTPS certificates automatically. For an app domain, add an A/AAAA record pointing to this server, then set the domain in that app's dashboard settings. Ports 80 and 443 must be reachable. Direct allocated host-port URLs remain HTTP. The panel container must have the Caddyfile mounted at `/app/Caddyfile` (the supplied Compose file already does this). Webbase Cloud writes managed app-domain site blocks into that file and asks Caddy to reload its configuration.
+Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. The same Caddy instance also routes configured app domains to their containers and obtains HTTPS certificates automatically. For an app domain, add an A/AAAA record pointing to the control server running Caddy, then set the domain in that app's dashboard settings. If the app is on a remote node, allow the app port range from the control server to that node; Caddy proxies to the node's public host and allocated port. Ports 80 and 443 must be reachable. Direct allocated host-port URLs remain HTTP. The panel container must have the Caddyfile mounted at `/app/Caddyfile` (the supplied Compose file already does this). Webbase Cloud writes managed app-domain site blocks into that file and asks Caddy to reload its configuration.
 
 ## Environment variables
 
@@ -164,9 +178,12 @@ Protected endpoints require the header `Authorization: Bearer YOUR_TOKEN`. Obtai
 | --- | --- | --- |
 | POST | `/api/auth/login` | Sign in as administrator |
 | GET | `/api/me` | Get the signed-in administrator |
-| GET | `/api/system` | Check Docker and host configuration |
+| GET | `/api/system` | Check local Docker and host configuration |
+| GET | `/api/nodes` | List local and remote Docker nodes with connection status |
+| POST | `/api/nodes` | Register and test a remote Docker-over-SSH node |
+| DELETE | `/api/nodes/:id` | Remove an unused remote node |
 | GET | `/api/apps` | List applications and their deployment status |
-| POST | `/api/apps` | Register and queue a new deployment |
+| POST | `/api/apps` | Register and queue a deployment on a selected node |
 | GET | `/api/apps/:id/logs` | Read recent deployment logs |
 | GET | `/api/apps/:id/env` | List saved environment variable names (not values) |
 | GET/PUT/DELETE | `/api/apps/:id/repository-auth` | Check, set or remove an encrypted Git token |
@@ -203,7 +220,7 @@ The actual port is allocated automatically. Ensure the host firewall and cloud-p
 
 ## Current limitations
 
-This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, a multi-server scheduler/agent, billing, managed databases or automated backups. Custom-domain traffic is switched to the new container after its configured health check passes; direct host-port URLs may change on redeploy. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Secret values are write-only through the dashboard and API. App containers have basic resource limits, not production-grade isolation.
+This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, automatic load balancing, node failover, moving existing apps between nodes, billing, managed databases or automated backups. Node selection is manual. Custom-domain traffic is switched to the new container after its configured health check passes; direct host-port URLs may change on redeploy. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Secret values are write-only through the dashboard and API. App containers have basic resource limits, not production-grade isolation.
 
 ## Security and cost
 
@@ -211,6 +228,7 @@ This is an early, single-server MVP. It now supports private Git cloning, per-ap
 - The Docker socket is highly privileged and effectively grants root-level control of the host.
 - Dockerfiles from deployed repositories execute build instructions on your server. Deploy only code you trust.
 - Use narrowly scoped read-only repository tokens. They are encrypted at rest, but the server administrator controls the runtime and can access credentials during cloning.
+- Remote Docker-over-SSH nodes grant the panel root-equivalent control of each remote Docker host. Protect SSH private keys and limit node access to trusted operators.
 - Use a strong administrator password and a unique `JWT_SECRET`.
 - Back up the `data/` directory and your server separately.
 - Hosting costs depend on the server provider and its limits. Webbase Cloud itself does not create an always-free VM or guarantee free 24/7 compute.
