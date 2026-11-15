@@ -63,7 +63,7 @@ async function deploy(a){
   const health=a.healthcheck_cmd?["--health-cmd",a.healthcheck_cmd,"--health-interval=30s","--health-timeout=5s","--health-retries=3","--health-start-period=20s"]:[];
   try{await docker(["run","-d","--name",nextContainer,"--restart","unless-stopped","--network",process.env.DOCKER_NETWORK||"webbase-cloud","--memory",process.env.APP_MEMORY_LIMIT||"512m","--cpus",process.env.APP_CPU_LIMIT||"1","--pids-limit","256","--label","webbase-cloud.managed=true","-p","0.0.0.0:"+hostPort+":"+a.port+"/tcp",...health,"--env-file",envFile,image],60000);started=true}
   finally{try{fs.rmSync(envFile,{force:true})}catch{}}
-  if(a.healthcheck_cmd){
+  if(a.healthcheck_cmd||hasImageHealth){
    const deadline=Date.now()+120000;let state="starting";
    while(Date.now()<deadline){const h=await docker(["inspect","--format","{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",nextContainer],10000);state=h.stdout.trim();if(state==="healthy")break;if(state==="unhealthy")throw new Error("New container failed its Docker health check; the previous version is still serving traffic.");await new Promise(resolve=>setTimeout(resolve,3000))}
    if(state!=="healthy")throw new Error("New container did not become healthy within 120 seconds; previous version kept running.");
