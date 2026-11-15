@@ -26,5 +26,9 @@ jobs:
           new Function(match[1]);
           console.log('Dashboard JavaScript syntax OK');
           NODE
+      - name: Validate Docker Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
       - name: Validate Docker image build
         run: docker build -t webbase-cloud-ci .
