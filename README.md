@@ -1,40 +1,231 @@
-# Webbase Cloud
+# Webbase Cloud — App Hosting Platform
 
-A self-hosted, single-server deployment control panel. This is a separate project from Webbase Database.
+<p align="center"><strong>A self-hosted deployment workspace for GitHub and GitLab applications.</strong><br>Deployment Console · Docker Builds · App Containers · Live Logs · Resource Limits · Apache-2.0</p>
 
-## MVP features
-- Private administrator login (JWT + bcrypt)
-- Register public GitHub/GitLab repositories containing a root-level `Dockerfile`
-- Build and run app containers with Docker
-- View deployment logs; stop, restart, redeploy and delete apps
-- Automatically allocate a host port and show the resulting app URL
-- Per-app default limits: 512 MiB RAM, 1 CPU and 256 processes
+<p align="center">
+<img src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js 20+">
+<img src="https://img.shields.io/badge/Docker-Engine-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Engine">
+<img src="https://img.shields.io/badge/Caddy-Reverse_Proxy-1F88C0?style=for-the-badge&logo=caddy&logoColor=white" alt="Caddy">
+<img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=for-the-badge" alt="Apache-2.0">
+</p>
+
+## Overview
+
+Webbase Cloud is a self-hosted application deployment control panel. Connect a public GitHub or GitLab repository, build its root-level Dockerfile, and run the resulting container on your own Linux server. Manage deployments, inspect logs, restart or stop apps, and open each app through its assigned public port.
+
+**Webbase Cloud is an independent project. It is not an official Render, Railway, Vercel or Heroku product, and it does not provide compute or free hosting by itself. You must supply and maintain a server or VM.**
+
+## Website
+
+- Hosting dashboard: `/`
+- Health endpoint: `/api/health`
+- System status (authenticated): `/api/system`
+
+## Features
+
+- Private single-administrator sign-in using bcrypt password hashing and JWT sessions
+- Public GitHub and GitLab repository deployment
+- Docker image builds from a root-level `Dockerfile`
+- App lifecycle controls: deploy, redeploy, stop, restart and delete
+- Deployment status and per-app build/runtime logs
+- Automatic allocation of public host ports from `20000-20100`
+- Dashboard links to running applications
+- Per-container defaults of 512 MiB memory, 1 CPU and 256 processes
 - Persistent SQLite metadata and deployment logs
-- Caddy reverse proxy for the dashboard
+- Caddy reverse proxy in Docker Compose for the dashboard
+- Domain-based automatic HTTPS for the dashboard when DNS and ports 80/443 are configured
+- Request rate limiting, security headers and bounded JSON request bodies
+
+## Architecture
+
+```text
+                         Internet
+                            │
+                       HTTP / HTTPS
+                            │
+                            ▼
+                     Caddy Reverse Proxy
+                            │
+                    Private Docker Network
+                            │
+                            ▼
+                    Express Control Panel
+                       │            │
+                SQLite Metadata   Docker Engine
+                       │            │
+                       │       Build / Run / Stop
+                       │            │
+                       │            ▼
+                       │       App Containers
+                       │            │
+                       └──── Host Ports 20000-20100
+                                    │
+                                    ▼
+                              Public App URLs
+```
 
 ## Requirements
-- Ubuntu 22.04/24.04 server
-- Docker Engine and Docker Compose plugin
-- Public IPv4 address or a domain pointed at the server
-- Open TCP ports 80 and 443 for the dashboard proxy, plus 20000-20100 for deployed apps
 
-## Setup with Docker Compose
-1. Clone this repository onto your Linux server.
-2. Copy `.env.example` to `.env`.
-3. Set a random `JWT_SECRET` (32+ characters), a strong `ADMIN_EMAIL` and `ADMIN_PASSWORD` (12+ characters), and `PUBLIC_HOST` to the server's public IP or hostname.
-4. Start the platform: `docker compose up -d --build`.
-5. Open `http://PUBLIC_HOST` and sign in with the admin credentials from `.env`.
-6. Check the panel's Docker connection in the dashboard's system status.
+- Ubuntu 22.04 or 24.04 recommended
+- Docker Engine
+- Docker Compose plugin
+- Public IPv4 address or a domain pointed to the server
+- TCP ports 80 and 443 open for the dashboard proxy
+- TCP ports 20000-20100 open for deployed applications
+- A server with enough CPU, memory and disk for the panel and your app containers
 
-The dashboard container is not published directly on the host; Caddy proxies requests to it over the private Docker network. If you use a domain, change the site address in `Caddyfile` from `:80` to your domain (for example, `cloud.example.com`), point DNS to the server, then restart Caddy with `docker compose restart proxy`. Caddy can then provision HTTPS automatically when ports 80/443 are reachable.
+## Run with Docker Compose
 
-## Deployment URL behavior
-Each app container is published on an available TCP port in the host range `20000-20100`. The dashboard displays `http://PUBLIC_HOST:PORT` for each running app. The server firewall and cloud network security rules must allow the selected port range. The app must listen on the container port configured during deployment and bind to `0.0.0.0`, not only `127.0.0.1`.
+1. Clone the repository:
 
-This MVP does **not** yet provide custom domains or wildcard app subdomains, private Git repositories, build secrets, automatic health checks, multi-server scheduling, billing, managed databases, or automated backups. App URLs use direct host ports and HTTP; HTTPS currently applies only to the dashboard after domain configuration. Do not enter secrets into public repositories.
+   ```bash
+   git clone https://github.com/xsoftwareabdullah1-create/Webbase-Cloud.git
+   cd Webbase-Cloud
+   ```
 
-## Security and cost notes
-This software does not provide free compute or hosting by itself. You must supply a server/VM. The Docker socket is highly privileged (effectively root access), and repository Dockerfiles execute build steps on your server. Keep this dashboard private, use only repositories you trust, use a firewall or VPN, and do not expose it as an untrusted multi-user service. App containers have basic CPU, memory and process limits, but this is not production-grade isolation. Always Free capacity and availability depend on the provider and are not guaranteed.
+2. Create your environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Edit `.env`. Set a unique random JWT secret, a strong administrator password, and your server's public IP or hostname.
+
+4. Start Webbase Cloud:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+5. Open `http://YOUR_SERVER_IP` and sign in with the administrator credentials from `.env`.
+
+6. Confirm Docker is online in the dashboard's system status before creating a deployment.
+
+The panel is connected to the Docker socket so it can build and manage app containers. The panel's internal port is served through Caddy on the Compose network. Do not expose the Docker socket or dashboard to untrusted users.
+
+## Domain and HTTPS
+
+For a domain, point its DNS A/AAAA record to your server. Edit the site address in `Caddyfile` from `:80` to your domain, for example:
+
+```caddy
+cloud.example.com {
+  encode zstd gzip
+  reverse_proxy panel:8080
+}
+```
+
+Then restart the proxy:
+
+```bash
+docker compose restart proxy
+```
+
+Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. This HTTPS setup is for the Webbase Cloud dashboard. Deployed application URLs currently use direct host ports and HTTP.
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `PORT` | No | `8080` | Internal dashboard HTTP port |
+| `JWT_SECRET` | Yes | — | Random signing secret; minimum 32 characters |
+| `ADMIN_EMAIL` | No | `admin@example.com` | Initial administrator email |
+| `ADMIN_PASSWORD` | Yes | — | Initial administrator password; minimum 12 characters |
+| `DATA_DIR` | No | `./data` | SQLite database and app checkout directory |
+| `DOCKER_NETWORK` | No | `webbase-cloud` | Docker network used by deployed containers |
+| `PUBLIC_HOST` | Recommended | `localhost` | Public server IP or hostname used in app URLs |
+| `PUBLIC_DOMAIN` | No | — | Alternative public hostname setting |
+| `PUBLIC_SCHEME` | No | `http` | Scheme used for generated app URLs |
+| `APP_PORT_START` | No | `20000` | First host port in the allocation range |
+| `APP_PORT_END` | No | `20100` | Last host port in the allocation range |
+| `APP_MEMORY_LIMIT` | No | `512m` | Per-app container memory limit |
+| `APP_CPU_LIMIT` | No | `1` | Per-app container CPU limit |
+
+Generate a secret rather than using the example placeholder:
+
+```bash
+openssl rand -hex 32
+```
+
+Never commit `.env`, credentials, API keys or other secrets to Git.
+
+## API
+
+Protected endpoints require the header `Authorization: Bearer YOUR_TOKEN`. Obtain a token from the login endpoint.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| POST | `/api/auth/login` | Sign in as administrator |
+| GET | `/api/me` | Get the signed-in administrator |
+| GET | `/api/system` | Check Docker and host configuration |
+| GET | `/api/apps` | List applications and their deployment status |
+| POST | `/api/apps` | Register and queue a new deployment |
+| GET | `/api/apps/:id/logs` | Read recent deployment logs |
+| POST | `/api/apps/:id/action` | Deploy, stop or restart an application |
+| DELETE | `/api/apps/:id` | Remove an application |
+| GET | `/api/health` | Public service health check |
+
+Create-app request example:
+
+```json
+{
+  "name": "My Website",
+  "repo": "https://github.com/owner/repository",
+  "branch": "main",
+  "port": 3000
+}
+```
+
+The repository must be public and contain a `Dockerfile` in its root directory. The app must listen on the configured container port and bind to `0.0.0.0`, not only `127.0.0.1`.
+
+## Deployment behavior
+
+When a deployment is queued, Webbase Cloud clones the selected branch, builds the Docker image, replaces the previous app container, and starts the new container with resource limits. The dashboard records the deployment state and logs.
+
+Each running app receives an available host port from the configured range. Its URL has this form:
+
+```text
+http://YOUR_SERVER_IP:20000
+```
+
+The actual port is allocated automatically. Ensure the host firewall and cloud-provider network rules permit the configured range.
+
+## Current limitations
+
+This is an early, single-server MVP. It does not currently provide private repository authentication, per-app build secrets or environment-variable management, custom app domains, wildcard subdomains, HTTPS for deployed apps, automatic health checks, zero-downtime releases, multi-server scheduling, billing, managed databases or automated backups. App containers have basic resource limits, not production-grade isolation.
+
+## Security and cost
+
+- Keep the dashboard private and restrict access with a firewall or VPN.
+- The Docker socket is highly privileged and effectively grants root-level control of the host.
+- Dockerfiles from deployed repositories execute build instructions on your server. Deploy only code you trust.
+- Use a strong administrator password and a unique `JWT_SECRET`.
+- Back up the `data/` directory and your server separately.
+- Hosting costs depend on the server provider and its limits. Webbase Cloud itself does not create an always-free VM or guarantee free 24/7 compute.
+
+Do not use this MVP as an untrusted public multi-tenant hosting service.
+
+## Project structure
+
+```text
+Webbase-Cloud/
+├── public/
+│   └── index.html
+├── data/                    # Runtime database and app checkouts
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── server.js                # Express API and deployment controller
+├── Dockerfile               # Panel container image
+├── docker-compose.yml       # Panel, Caddy and shared network
+├── Caddyfile                # Dashboard reverse proxy
+├── package.json
+├── .env.example
+├── .gitignore
+└── LICENSE
+```
 
 ## License
-Apache-2.0.
+
+Apache License 2.0 — see [LICENSE](LICENSE).
+
+<p align="center">Built and maintained by <strong>Abdullah</strong><br><sub>Copyright © 2026 Abdullah. Licensed under Apache-2.0.</sub></p>
