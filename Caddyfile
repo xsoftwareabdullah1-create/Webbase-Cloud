@@ -1,4 +1,7 @@
-# Configure your domain and DNS before enabling public HTTPS.
+# HTTP reverse proxy for the Webbase Cloud dashboard.
+# Replace :80 with your domain (for example, cloud.example.com) to enable
+# Caddy-managed HTTPS after the domain's DNS points to this server.
 :80 {
-  respond "Webbase Cloud proxy is ready" 200
+  encode zstd gzip
+  reverse_proxy panel:8080
 }
