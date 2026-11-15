@@ -7,6 +7,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
+      - ./Caddyfile:/app/Caddyfile
     networks: [webbase-cloud]
   proxy:
     image: caddy:2
