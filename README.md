@@ -124,7 +124,7 @@ Then restart the proxy:
 docker compose restart proxy
 ```
 
-Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. The same Caddy instance also routes configured app domains to their containers and obtains HTTPS certificates automatically. For an app domain, add an A/AAAA record pointing to this server, then set the domain in that app's dashboard settings. Ports 80 and 443 must be reachable. Direct allocated host-port URLs remain HTTP. The panel container must have the Caddyfile mounted at `/app/Caddyfile` (the supplied Compose file already does this).
+Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. The same Caddy instance also routes configured app domains to their containers and obtains HTTPS certificates automatically. For an app domain, add an A/AAAA record pointing to this server, then set the domain in that app's dashboard settings. Ports 80 and 443 must be reachable. Direct allocated host-port URLs remain HTTP. The panel container must have the Caddyfile mounted at `/app/Caddyfile` (the supplied Compose file already does this). Webbase Cloud writes managed app-domain site blocks into that file and asks Caddy to reload its configuration.
 
 ## Environment variables
 
@@ -203,7 +203,7 @@ The actual port is allocated automatically. Ensure the host firewall and cloud-p
 
 ## Current limitations
 
-This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, a multi-server scheduler/agent, billing, managed databases or automated backups. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Runtime environment variables are encrypted at rest; they are injected into containers at start and are not returned by the API. App containers have basic resource limits, not production-grade isolation.
+This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, a multi-server scheduler/agent, billing, managed databases or automated backups. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Secret values are write-only through the dashboard and API. App containers have basic resource limits, not production-grade isolation.
 
 ## Security and cost
 
