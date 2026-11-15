@@ -8,7 +8,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
       - ./Caddyfile:/app/Caddyfile
-      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.ssh:/host-ssh:ro
     networks: [webbase-cloud]
   proxy:
     image: caddy:2
