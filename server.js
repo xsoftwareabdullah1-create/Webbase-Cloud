@@ -19,11 +19,12 @@ function auth(req,res,next){try{req.user=jwt.verify((req.headers.authorization||
 function slugify(v){return String(v||"").toLowerCase().trim().replace(/[^a-z0-9-]/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"").slice(0,40)}
 function validRepo(v){try{const u=new URL(v);return u.protocol==="https:"&&["github.com","gitlab.com"].includes(u.hostname)&&/^\/[\w.-]+\/[\w.-]+(\.git)?\/?$/.test(u.pathname)}catch{return false}}
 async function docker(args,timeout=120000){return run("docker",args,{timeout,maxBuffer:2*1024*1024})}
-function publicUrl(port){const host=process.env.PUBLIC_HOST||process.env.PUBLIC_DOMAIN||"localhost";return "http://"+(host.includes(":")&&!host.startsWith("[")?"["+host+"]":host)+":"+port}
+function publicUrl(port){const host=process.env.PUBLIC_HOST||process.env.PUBLIC_DOMAIN||"localhost";const safe=host.includes(":")&&!host.startsWith("[")?"["+host+"]":host;return (process.env.PUBLIC_SCHEME||"http")+"://"+safe+":"+port}
+function allocateHostPort(){const start=Number(process.env.APP_PORT_START||20000),end=Number(process.env.APP_PORT_END||20100);const used=new Set(db.prepare("SELECT host_port FROM apps WHERE host_port IS NOT NULL").all().map(x=>x.host_port));for(let p=start;p<=end;p++)if(!used.has(p))return p;throw new Error("No free app ports remain. Increase APP_PORT_END or remove stopped apps.");}
 async function deploy(a){
  const dir=path.join(CHECKOUTS,a.slug),image="wbc-"+a.slug+":latest";
  try{
-  db.prepare("UPDATE apps SET status='building',host_port=NULL,last_error=NULL WHERE id=?").run(a.id);
+  const hostPort=allocateHostPort();db.prepare("UPDATE apps SET status='building',host_port=?,last_error=NULL WHERE id=?").run(hostPort,a.id);
   fs.rmSync(dir,{recursive:true,force:true});fs.mkdirSync(dir,{recursive:true});
   log(a.id,"Cloning repository "+a.repo);
   await run("git",["clone","--depth","1","--branch",a.branch,a.repo,dir],{timeout:120000});
@@ -31,10 +32,7 @@ async function deploy(a){
   log(a.id,"Building Docker image…");await docker(["build","--pull","-t",image,dir],600000);
   try{await docker(["rm","-f",a.container],30000)}catch{}
   log(a.id,"Starting app with resource limits (512 MiB RAM, 1 CPU, 256 processes)…");
-  await docker(["run","-d","--name",a.container,"--restart","unless-stopped","--network",process.env.DOCKER_NETWORK||"webbase-cloud","--memory",process.env.APP_MEMORY_LIMIT||"512m","--cpus",process.env.APP_CPU_LIMIT||"1","--pids-limit","256","--label","webbase-cloud.managed=true","-p", "20000-20100:"+a.port+"/tcp","-e","PORT="+a.port,image],60000);
-  const mapped=await docker(["port",a.container,a.port+"/tcp"],30000);
-  const match=mapped.stdout.match(/:(\d+)\s*$/m);if(!match)throw new Error("Container started, but Docker did not report a public host port.");
-  const hostPort=Number(match[1]);
+  await docker(["run","-d","--name",a.container,"--restart","unless-stopped","--network",process.env.DOCKER_NETWORK||"webbase-cloud","--memory",process.env.APP_MEMORY_LIMIT||"512m","--cpus",process.env.APP_CPU_LIMIT||"1","--pids-limit","256","--label","webbase-cloud.managed=true","-p", "0.0.0.0:"+hostPort+":"+a.port+"/tcp","-e","PORT="+a.port,image],60000);
   db.prepare("UPDATE apps SET status='running',host_port=?,last_error=NULL WHERE id=?").run(hostPort,a.id);
   log(a.id,"Container started at "+publicUrl(hostPort));
  }catch(e){db.prepare("UPDATE apps SET status='failed',last_error=? WHERE id=?").run(String(e.message).slice(0,900),a.id);log(a.id,"ERROR: "+e.message)}
