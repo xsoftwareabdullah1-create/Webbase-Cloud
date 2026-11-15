@@ -23,6 +23,7 @@ const email=(process.env.ADMIN_EMAIL||"admin@example.com").toLowerCase();
 if(!db.prepare("SELECT id FROM admin WHERE id=1").get())db.prepare("INSERT INTO admin VALUES(1,?,?)").run(email,bcrypt.hashSync(process.env.ADMIN_PASSWORD,12));
 const stamp=()=>new Date().toISOString(),log=(id,msg)=>db.prepare("INSERT INTO logs(app_id,message,created_at) VALUES(?,?,?)").run(id,String(msg).slice(0,3000),stamp());
 db.prepare("INSERT OR IGNORE INTO nodes(id,name,docker_host,public_host,enabled,created_at) VALUES('local','Local server',NULL,?,1,?)").run(process.env.PUBLIC_HOST||process.env.PUBLIC_DOMAIN||"localhost",stamp());
+db.prepare("UPDATE nodes SET public_host=? WHERE id='local'").run(process.env.PUBLIC_HOST||process.env.PUBLIC_DOMAIN||"localhost");
 app.use(helmet({contentSecurityPolicy:false}));app.use(express.json({limit:"32kb"}));app.use(rateLimit({windowMs:900000,limit:180}));app.use(express.static(path.join(__dirname,"public")));
 function auth(req,res,next){try{req.user=jwt.verify((req.headers.authorization||"").replace(/^Bearer\s+/i,""),SECRET);next()}catch{return res.status(401).json({error:"Sign in required"})}}
 function slugify(v){return String(v||"").toLowerCase().trim().replace(/[^a-z0-9-]/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"").slice(0,40)}
