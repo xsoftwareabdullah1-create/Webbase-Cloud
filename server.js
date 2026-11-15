@@ -35,22 +35,50 @@ async function syncCaddy(){if(!fs.existsSync(CADDYFILE))throw new Error("Caddyfi
 function allocateHostPort(){const start=Number(process.env.APP_PORT_START||20000),end=Number(process.env.APP_PORT_END||20100);const used=new Set(db.prepare("SELECT host_port FROM apps WHERE host_port IS NOT NULL").all().map(x=>x.host_port));for(let p=start;p<=end;p++)if(!used.has(p))return p;throw new Error("No free app ports remain. Increase APP_PORT_END or remove stopped apps.");}
 async function deploy(a){
  const dir=path.join(CHECKOUTS,a.slug),image="wbc-"+a.slug+":latest";
+ const previous=db.prepare("SELECT container,host_port,status FROM apps WHERE id=?").get(a.id)||{};
+ const oldContainer=previous.container||a.container,oldHostPort=previous.host_port??null,wasRunning=previous.status==="running";
+ const nextContainer="wbc-"+a.slug+"-"+crypto.randomBytes(5).toString("hex");
+ let hostPort=null,started=false,switched=false;
  try{
-  const hostPort=allocateHostPort();db.prepare("UPDATE apps SET status='building',host_port=?,last_error=NULL WHERE id=?").run(hostPort,a.id);
+  hostPort=allocateHostPort();
+  db.prepare("UPDATE apps SET status='building',last_error=NULL WHERE id=?").run(a.id);
   fs.rmSync(dir,{recursive:true,force:true});fs.mkdirSync(dir,{recursive:true});
   log(a.id,"Cloning repository "+a.repo);
-  const auth=decryptEnv(a.repo_auth_ciphertext);if(auth.token){const askpass=path.join(DATA,".git-askpass-"+a.id);fs.writeFileSync(askpass,'#!/bin/sh\ncase "$1" in *Username*) printf "%s\n" "$WEBBASE_GIT_USERNAME";; *) printf "%s\n" "$WEBBASE_GIT_TOKEN";; esac\n',{mode:0o700});try{await run("git",["clone","--depth","1","--branch",a.branch,a.repo,dir],{timeout:120000,env:{...process.env,GIT_ASKPASS:askpass,GIT_TERMINAL_PROMPT:"0",WEBBASE_GIT_USERNAME:auth.username||"x-access-token",WEBBASE_GIT_TOKEN:auth.token}})}finally{fs.rmSync(askpass,{force:true})}}else await run("git",["clone","--depth","1","--branch",a.branch,a.repo,dir],{timeout:120000});
+  const auth=decryptEnv(a.repo_auth_ciphertext);
+  if(auth.token){
+   const askpass=path.join(DATA,".git-askpass-"+a.id);
+   fs.writeFileSync(askpass,'#!/bin/sh\ncase "$1" in *Username*) printf "%s\n" "$WEBBASE_GIT_USERNAME";; *) printf "%s\n" "$WEBBASE_GIT_TOKEN";; esac\n',{mode:0o700});
+   try{await run("git",["clone","--depth","1","--branch",a.branch,a.repo,dir],{timeout:120000,env:{...process.env,GIT_ASKPASS:askpass,GIT_TERMINAL_PROMPT:"0",WEBBASE_GIT_USERNAME:auth.username||"x-access-token",WEBBASE_GIT_TOKEN:auth.token}})}
+   finally{fs.rmSync(askpass,{force:true})}
+  }else await run("git",["clone","--depth","1","--branch",a.branch,a.repo,dir],{timeout:120000});
   if(!fs.existsSync(path.join(dir,"Dockerfile")))throw new Error("A Dockerfile is required in the repository root.");
-  log(a.id,"Building Docker image…");const buildResult=await docker(["build","--pull","-t",image,dir],600000);for(const line of (buildResult.stdout+"\n"+buildResult.stderr).split(/\r?\n/).filter(Boolean).slice(-40))log(a.id,"BUILD: "+line.slice(0,2500));
-  try{await docker(["rm","-f",a.container],30000)}catch{}
-  log(a.id,"Starting app with resource limits (512 MiB RAM, 1 CPU, 256 processes)…");
+  log(a.id,"Building Docker image…");
+  const buildResult=await docker(["build","--pull","-t",image,dir],600000);
+  for(const line of (buildResult.stdout+"\n"+buildResult.stderr).split(/\r?\n/).filter(Boolean).slice(-40))log(a.id,"BUILD: "+line.slice(0,2500));
+  log(a.id,"Starting replacement container while the previous version remains available…");
   const saved=db.prepare("SELECT env_ciphertext FROM apps WHERE id=?").get(a.id),env=decryptEnv(saved?.env_ciphertext),envFile=path.join(DATA,".env-"+a.id);
   const envLines=Object.entries({...env,PORT:String(a.port)}).map(([k,v])=>k+"="+v).join("\n")+"\n";
   fs.writeFileSync(envFile,envLines,{mode:0o600,flag:"w"});fs.chmodSync(envFile,0o600);
-  const health=a.healthcheck_cmd?["--health-cmd",a.healthcheck_cmd,"--health-interval=30s","--health-timeout=5s","--health-retries=3","--health-start-period=20s"]:[];try{await docker(["run","-d","--name",a.container,"--restart","unless-stopped","--network",process.env.DOCKER_NETWORK||"webbase-cloud","--memory",process.env.APP_MEMORY_LIMIT||"512m","--cpus",process.env.APP_CPU_LIMIT||"1","--pids-limit","256","--label","webbase-cloud.managed=true","-p","0.0.0.0:"+hostPort+":"+a.port+"/tcp",...health,"--env-file",envFile,image],60000)}finally{try{fs.rmSync(envFile,{force:true})}catch{}}
-  db.prepare("UPDATE apps SET status='running',host_port=?,last_error=NULL WHERE id=?").run(hostPort,a.id);
-  log(a.id,"Container started at "+publicUrl(hostPort));if(a.domain){try{await syncCaddy();log(a.id,"Custom domain configured: https://"+a.domain)}catch(e){log(a.id,"WARNING: Caddy reload failed: "+e.message)}}
- }catch(e){const output=[e.stdout,e.stderr].filter(Boolean).join("\n").split(/\r?\n/).filter(Boolean).slice(-40);for(const line of output)log(a.id,"BUILD: "+line.slice(0,2500));db.prepare("UPDATE apps SET status='failed',host_port=NULL,last_error=? WHERE id=?").run(String(e.message).slice(0,900),a.id);log(a.id,"ERROR: "+e.message)}
+  const health=a.healthcheck_cmd?["--health-cmd",a.healthcheck_cmd,"--health-interval=30s","--health-timeout=5s","--health-retries=3","--health-start-period=20s"]:[];
+  try{await docker(["run","-d","--name",nextContainer,"--restart","unless-stopped","--network",process.env.DOCKER_NETWORK||"webbase-cloud","--memory",process.env.APP_MEMORY_LIMIT||"512m","--cpus",process.env.APP_CPU_LIMIT||"1","--pids-limit","256","--label","webbase-cloud.managed=true","-p","0.0.0.0:"+hostPort+":"+a.port+"/tcp",...health,"--env-file",envFile,image],60000);started=true}
+  finally{try{fs.rmSync(envFile,{force:true})}catch{}}
+  if(a.healthcheck_cmd){
+   const deadline=Date.now()+120000;let state="starting";
+   while(Date.now()<deadline){const h=await docker(["inspect","--format","{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}",nextContainer],10000);state=h.stdout.trim();if(state==="healthy")break;if(state==="unhealthy")throw new Error("New container failed its Docker health check; the previous version is still serving traffic.");await new Promise(resolve=>setTimeout(resolve,3000))}
+   if(state!=="healthy")throw new Error("New container did not become healthy within 120 seconds; previous version kept running.");
+  }else await new Promise(resolve=>setTimeout(resolve,1500));
+  db.prepare("UPDATE apps SET container=?,status='running',host_port=?,last_error=NULL WHERE id=?").run(nextContainer,hostPort,a.id);switched=true;
+  if(a.domain)await syncCaddy();
+  if(oldContainer&&oldContainer!==nextContainer){try{await docker(["rm","-f",oldContainer],30000)}catch{}}
+  log(a.id,"Deployment successful: "+(a.domain?"https://"+a.domain:publicUrl(hostPort)));
+ }catch(e){
+  if(switched){db.prepare("UPDATE apps SET container=?,status=?,host_port=?,last_error=? WHERE id=?").run(oldContainer,wasRunning?"running":"failed",oldHostPort,String(e.message).slice(0,900),a.id);if(a.domain){try{await syncCaddy()}catch(x){log(a.id,"WARNING: Previous proxy route restore failed: "+x.message)}}}
+  else db.prepare("UPDATE apps SET container=?,status=?,host_port=?,last_error=? WHERE id=?").run(oldContainer,wasRunning?"running":"failed",oldHostPort,String(e.message).slice(0,900),a.id);
+  if(started){try{await docker(["rm","-f",nextContainer],30000)}catch{}}
+  const output=[e.stdout,e.stderr].filter(Boolean).join("\n").split(/\r?\n/).filter(Boolean).slice(-40);
+  for(const line of output)log(a.id,"BUILD: "+line.slice(0,2500));
+  log(a.id,"ERROR: "+e.message);
+ }
 }
 app.get("/api/health",(q,s)=>s.json({ok:true,service:"webbase-cloud"}));
 app.post("/api/auth/login",(q,s)=>{const u=db.prepare("SELECT * FROM admin WHERE email=?").get(String(q.body?.email||"").toLowerCase());if(!u||!bcrypt.compareSync(String(q.body?.password||""),u.password_hash))return s.status(401).json({error:"Invalid email or password"});s.json({token:jwt.sign({email:u.email},SECRET,{expiresIn:"12h"}),email:u.email})});
