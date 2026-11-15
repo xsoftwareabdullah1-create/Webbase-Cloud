@@ -1,0 +1,4 @@
+# Configure your domain and DNS before enabling public HTTPS.
+:80 {
+  respond "Webbase Cloud proxy is ready" 200
+}
