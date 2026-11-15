@@ -29,9 +29,11 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 - App lifecycle controls: deploy, redeploy, stop, restart and delete
 - Deployment status, Docker health status and per-app build/runtime logs
 - Automatic allocation of public host ports from `20000-20100`
-- Dashboard links to running applications and custom domains\n- Per-app custom domains with Caddy-managed automatic HTTPS
+- Dashboard links to running applications and custom domains
+- Per-app custom domains with Caddy-managed automatic HTTPS
 - Per-container defaults of 512 MiB memory, 1 CPU and 256 processes
-- Per-app environment variables and private-repository credentials encrypted at rest with AES-256-GCM\n- Optional Docker health checks configured per application
+- Per-app environment variables and private-repository credentials encrypted at rest with AES-256-GCM
+- Optional Docker health checks configured per application
 - Secret values are write-only in the dashboard; only variable names are listed
 - Persistent SQLite metadata and deployment logs
 - Caddy reverse proxy in Docker Compose for the dashboard
@@ -122,7 +124,7 @@ Then restart the proxy:
 docker compose restart proxy
 ```
 
-Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. The same Caddy instance also routes configured app domains to their containers and obtains HTTPS certificates automatically. For an app domain, add an A/AAAA record pointing to this server, then set the domain in that app's dashboard settings. Ports 80 and 443 must be reachable. Direct allocated host-port URLs remain HTTP.
+Caddy can automatically obtain and renew a TLS certificate when the domain resolves to the server and inbound TCP ports 80 and 443 are reachable. The same Caddy instance also routes configured app domains to their containers and obtains HTTPS certificates automatically. For an app domain, add an A/AAAA record pointing to this server, then set the domain in that app's dashboard settings. Ports 80 and 443 must be reachable. Direct allocated host-port URLs remain HTTP. The panel container must have the Caddyfile mounted at `/app/Caddyfile` (the supplied Compose file already does this).
 
 ## Environment variables
 
@@ -140,7 +142,9 @@ Caddy can automatically obtain and renew a TLS certificate when the domain resol
 | `APP_PORT_START` | No | `20000` | First host port in the allocation range |
 | `APP_PORT_END` | No | `20100` | Last host port in the allocation range |
 | `APP_MEMORY_LIMIT` | No | `512m` | Per-app container memory limit |
-| `APP_CPU_LIMIT` | No | `1` | Per-app container CPU limit |\n| `CADDYFILE_PATH` | No | `./Caddyfile` | Caddy config file mounted into the panel container |\n| `CADDY_CONTAINER` | No | `webbase-cloud-proxy` | Caddy container name used for config reloads |
+| `APP_CPU_LIMIT` | No | `1` | Per-app container CPU limit |
+| `CADDYFILE_PATH` | No | `./Caddyfile` | Caddy config file mounted into the panel container |
+| `CADDY_CONTAINER` | No | `webbase-cloud-proxy` | Caddy container name used for config reloads |
 | `APP_ENCRYPTION_KEY` | Required for env vars | — | 32-byte encryption key as 64 hex characters or base64; keep stable and back it up securely |
 
 Generate a secret rather than using the example placeholder:
@@ -164,7 +168,9 @@ Protected endpoints require the header `Authorization: Bearer YOUR_TOKEN`. Obtai
 | GET | `/api/apps` | List applications and their deployment status |
 | POST | `/api/apps` | Register and queue a new deployment |
 | GET | `/api/apps/:id/logs` | Read recent deployment logs |
-| GET | `/api/apps/:id/env` | List saved environment variable names (not values) |\n| GET/PUT/DELETE | `/api/apps/:id/repository-auth` | Check, set or remove an encrypted Git token |\n| PUT | `/api/apps/:id/domain` | Set or remove the app's custom domain and reload Caddy |
+| GET | `/api/apps/:id/env` | List saved environment variable names (not values) |
+| GET/PUT/DELETE | `/api/apps/:id/repository-auth` | Check, set or remove an encrypted Git token |
+| PUT | `/api/apps/:id/domain` | Set or remove the app's custom domain and reload Caddy |
 | PUT | `/api/apps/:id/env` | Add/update variables; send `null` to delete a key |
 | POST | `/api/apps/:id/action` | Deploy, stop or restart an application |
 | DELETE | `/api/apps/:id` | Remove an application |
@@ -197,13 +203,14 @@ The actual port is allocated automatically. Ensure the host firewall and cloud-p
 
 ## Current limitations
 
-This is an early, single-server MVP. It does not currently provide build-time secrets, wildcard subdomains, zero-downtime releases, multi-server scheduling, billing, managed databases or automated backups. Custom-domain HTTPS requires working public DNS and reachable ports 80/443. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Runtime environment variables are encrypted at rest; they are injected into containers at start and are not returned by the API. App containers have basic resource limits, not production-grade isolation.
+This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, a multi-server scheduler/agent, billing, managed databases or automated backups. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Runtime environment variables are encrypted at rest; they are injected into containers at start and are not returned by the API. App containers have basic resource limits, not production-grade isolation.
 
 ## Security and cost
 
 - Keep the dashboard private and restrict access with a firewall or VPN.
 - The Docker socket is highly privileged and effectively grants root-level control of the host.
-- Dockerfiles from deployed repositories execute build instructions on your server. Deploy only code you trust.\n- Use narrowly scoped read-only repository tokens. They are encrypted at rest, but the server administrator controls the runtime and can access credentials during cloning.
+- Dockerfiles from deployed repositories execute build instructions on your server. Deploy only code you trust.
+- Use narrowly scoped read-only repository tokens. They are encrypted at rest, but the server administrator controls the runtime and can access credentials during cloning.
 - Use a strong administrator password and a unique `JWT_SECRET`.
 - Back up the `data/` directory and your server separately.
 - Hosting costs depend on the server provider and its limits. Webbase Cloud itself does not create an always-free VM or guarantee free 24/7 compute.
