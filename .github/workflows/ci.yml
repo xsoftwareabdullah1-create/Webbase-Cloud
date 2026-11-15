@@ -12,10 +12,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install dependencies
-        run: npm install
-      - name: Check JavaScript syntax
-        run: node --check server.js
+      - name: Check Cloudflare Pages Function syntax
+        run: node --input-type=module --check < 'functions/api/[[path]].js'
       - name: Check dashboard JavaScript syntax
         run: |
           node - <<'NODE'
@@ -26,9 +24,19 @@ jobs:
           new Function(match[1]);
           console.log('Dashboard JavaScript syntax OK');
           NODE
-      - name: Validate Docker Compose configuration
+      - name: Validate D1 migration
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const sql = fs.readFileSync('migrations/0001_initial.sql', 'utf8');
+          for (const table of ['apps', 'logs', 'login_attempts']) {
+            if (!new RegExp('CREATE TABLE IF NOT EXISTS ' + table + '\\b', 'i').test(sql)) {
+              throw new Error('Missing D1 table: ' + table);
+            }
+          }
+          console.log('D1 schema migration OK');
+          NODE
+      - name: Validate legacy Docker Compose files
         run: |
           cp .env.example .env
           docker compose config --quiet
-      - name: Validate Docker image build
-        run: docker build -t webbase-cloud-ci .
