@@ -145,7 +145,7 @@ Caddy can automatically obtain and renew a TLS certificate when the domain resol
 | `APP_CPU_LIMIT` | No | `1` | Per-app container CPU limit |
 | `CADDYFILE_PATH` | No | `./Caddyfile` | Caddy config file mounted into the panel container |
 | `CADDY_CONTAINER` | No | `webbase-cloud-proxy` | Caddy container name used for config reloads |
-| `APP_ENCRYPTION_KEY` | Required for env vars | — | 32-byte encryption key as 64 hex characters or base64; keep stable and back it up securely |
+| `APP_ENCRYPTION_KEY` | Required for env vars and private repo tokens | — | 32-byte encryption key as 64 hex characters or base64; keep stable and back it up securely |
 
 Generate a secret rather than using the example placeholder:
 
@@ -191,7 +191,7 @@ The repository must contain a `Dockerfile` in its root directory. Public reposit
 
 ## Deployment behavior
 
-When a deployment is queued, Webbase Cloud clones the selected branch, builds the Docker image, replaces the previous app container, and starts the new container with resource limits. The dashboard records the deployment state and logs.
+When a deployment is queued, Webbase Cloud clones the selected branch, builds the Docker image, starts a replacement container alongside the previous version, and waits for its configured Docker health check before switching the custom-domain route. The previous container is removed only after a successful switch. If the build or health check fails, the previous running version is kept. The dashboard records deployment state and logs.
 
 Each running app receives an available host port from the configured range. Its URL has this form:
 
@@ -203,11 +203,11 @@ The actual port is allocated automatically. Ensure the host firewall and cloud-p
 
 ## Current limitations
 
-This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, a multi-server scheduler/agent, billing, managed databases or automated backups. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Secret values are write-only through the dashboard and API. App containers have basic resource limits, not production-grade isolation.
+This is an early, single-server MVP. It now supports private Git cloning, per-app custom domains with Caddy-managed HTTPS, optional Docker health checks and health-gated replacement deployments. It does not yet provide build-time secrets, wildcard domains, a multi-server scheduler/agent, billing, managed databases or automated backups. Custom-domain traffic is switched to the new container after its configured health check passes; direct host-port URLs may change on redeploy. Runtime environment variables and repository tokens are encrypted at rest, but the Docker host administrator can access running container environments and build contexts. Secret values are write-only through the dashboard and API. App containers have basic resource limits, not production-grade isolation.
 
 ## Security and cost
 
-- Keep the dashboard private and restrict access with a firewall or VPN.
+- Keep the dashboard private and restrict access with a firewall or VPN. Use HTTPS for the dashboard before entering repository tokens; do not send credentials over plain HTTP.
 - The Docker socket is highly privileged and effectively grants root-level control of the host.
 - Dockerfiles from deployed repositories execute build instructions on your server. Deploy only code you trust.
 - Use narrowly scoped read-only repository tokens. They are encrypted at rest, but the server administrator controls the runtime and can access credentials during cloning.
