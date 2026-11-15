@@ -30,7 +30,9 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 - Deployment status and per-app build/runtime logs
 - Automatic allocation of public host ports from `20000-20100`
 - Dashboard links to running applications
-- Per-container defaults of 512 MiB memory, 1 CPU and 256 processes\n- Per-app environment variables encrypted at rest with AES-256-GCM\n- Secret values are write-only in the dashboard; only variable names are listed
+- Per-container defaults of 512 MiB memory, 1 CPU and 256 processes
+- Per-app environment variables encrypted at rest with AES-256-GCM
+- Secret values are write-only in the dashboard; only variable names are listed
 - Persistent SQLite metadata and deployment logs
 - Caddy reverse proxy in Docker Compose for the dashboard
 - Domain-based automatic HTTPS for the dashboard when DNS and ports 80/443 are configured
@@ -138,12 +140,14 @@ Caddy can automatically obtain and renew a TLS certificate when the domain resol
 | `APP_PORT_START` | No | `20000` | First host port in the allocation range |
 | `APP_PORT_END` | No | `20100` | Last host port in the allocation range |
 | `APP_MEMORY_LIMIT` | No | `512m` | Per-app container memory limit |
-| `APP_CPU_LIMIT` | No | `1` | Per-app container CPU limit |\n| `APP_ENCRYPTION_KEY` | Required for env vars | — | 32-byte encryption key as 64 hex characters or base64; keep stable and back it up securely |
+| `APP_CPU_LIMIT` | No | `1` | Per-app container CPU limit |
+| `APP_ENCRYPTION_KEY` | Required for env vars | — | 32-byte encryption key as 64 hex characters or base64; keep stable and back it up securely |
 
 Generate a secret rather than using the example placeholder:
 
 ```bash
-openssl rand -hex 32\n# Use the output as APP_ENCRYPTION_KEY
+openssl rand -hex 32
+# Use the output as APP_ENCRYPTION_KEY
 ```
 
 Never commit `.env`, credentials, API keys or other secrets to Git. Keep `APP_ENCRYPTION_KEY` backed up and unchanged: losing or rotating it without decrypting/re-encrypting existing records makes saved app variables unreadable. The key protects values at rest, but the Docker host administrator can still access running container environments.
@@ -159,7 +163,9 @@ Protected endpoints require the header `Authorization: Bearer YOUR_TOKEN`. Obtai
 | GET | `/api/system` | Check Docker and host configuration |
 | GET | `/api/apps` | List applications and their deployment status |
 | POST | `/api/apps` | Register and queue a new deployment |
-| GET | `/api/apps/:id/logs` | Read recent deployment logs |\n| GET | `/api/apps/:id/env` | List saved environment variable names (not values) |\n| PUT | `/api/apps/:id/env` | Add/update variables; send `null` to delete a key |
+| GET | `/api/apps/:id/logs` | Read recent deployment logs |
+| GET | `/api/apps/:id/env` | List saved environment variable names (not values) |
+| PUT | `/api/apps/:id/env` | Add/update variables; send `null` to delete a key |
 | POST | `/api/apps/:id/action` | Deploy, stop or restart an application |
 | DELETE | `/api/apps/:id` | Remove an application |
 | GET | `/api/health` | Public service health check |
