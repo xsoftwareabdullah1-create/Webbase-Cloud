@@ -4,6 +4,9 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY . .
+COPY docker-entrypoint.sh /usr/local/bin/webbase-entrypoint
+RUN chmod 755 /usr/local/bin/webbase-entrypoint
 ENV NODE_ENV=production
 EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/webbase-entrypoint"]
 CMD ["node", "server.js"]
