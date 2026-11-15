@@ -43,8 +43,8 @@ async function deploy(a){
  const oldContainer=previous.container||a.container,oldHostPort=previous.host_port??null,wasRunning=previous.status==="running";
  const nextContainer="wbc-"+a.slug+"-"+crypto.randomBytes(5).toString("hex");
  let hostPort=null,started=false,switched=false;
- try{
-  hostPort=allocateHostPort();
+ try{\n  if(!node||!node.enabled)throw new Error("Selected deployment node is unavailable or disabled.");
+  hostPort=allocateHostPort(node.id);
   db.prepare("UPDATE apps SET status='building',pending_host_port=?,last_error=NULL WHERE id=?").run(hostPort,a.id);
   fs.rmSync(dir,{recursive:true,force:true});fs.mkdirSync(dir,{recursive:true});
   log(a.id,"Cloning repository "+a.repo);
