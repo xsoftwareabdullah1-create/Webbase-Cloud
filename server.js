@@ -15,9 +15,9 @@ const email=(process.env.ADMIN_EMAIL||"admin@example.com").toLowerCase();
 if(!db.prepare("SELECT id FROM admin WHERE id=1").get())db.prepare("INSERT INTO admin VALUES(1,?,?)").run(email,bcrypt.hashSync(process.env.ADMIN_PASSWORD,12));
 const stamp=()=>new Date().toISOString(),log=(id,msg)=>db.prepare("INSERT INTO logs(app_id,message,created_at) VALUES(?,?,?)").run(id,String(msg).slice(0,3000),stamp());
 app.use(helmet({contentSecurityPolicy:false}));app.use(express.json({limit:"32kb"}));app.use(rateLimit({windowMs:900000,limit:180}));app.use(express.static(path.join(__dirname,"public")));
-function auth(req,res,next){try{req.user=jwt.verify((req.headers.authorization||"").replace(/^Bearer\\s+/i,""),SECRET);next()}catch{return res.status(401).json({error:"Sign in required"})}}
+function auth(req,res,next){try{req.user=jwt.verify((req.headers.authorization||"").replace(/^Bearer\s+/i,""),SECRET);next()}catch{return res.status(401).json({error:"Sign in required"})}}
 function slugify(v){return String(v||"").toLowerCase().trim().replace(/[^a-z0-9-]/g,"-").replace(/-+/g,"-").replace(/^-|-$/g,"").slice(0,40)}
-function validRepo(v){try{const u=new URL(v);return u.protocol==="https:"&&["github.com","gitlab.com"].includes(u.hostname)&&/^\\/[\\w.-]+\\/[\\w.-]+(\\.git)?\\/?$/.test(u.pathname)}catch{return false}}
+function validRepo(v){try{const u=new URL(v);return u.protocol==="https:"&&["github.com","gitlab.com"].includes(u.hostname)&&/^\/[\w.-]+\/[\w.-]+(\.git)?\/?$/.test(u.pathname)}catch{return false}}
 async function docker(args,timeout=120000){return run("docker",args,{timeout,maxBuffer:2*1024*1024})}
 function publicUrl(port){const host=process.env.PUBLIC_HOST||process.env.PUBLIC_DOMAIN||"localhost";return "http://"+(host.includes(":")&&!host.startsWith("[")?"["+host+"]":host)+":"+port}
 async function deploy(a){
@@ -33,7 +33,7 @@ async function deploy(a){
   log(a.id,"Starting app with resource limits (512 MiB RAM, 1 CPU, 256 processes)…");
   await docker(["run","-d","--name",a.container,"--restart","unless-stopped","--network",process.env.DOCKER_NETWORK||"webbase-cloud","--memory",process.env.APP_MEMORY_LIMIT||"512m","--cpus",process.env.APP_CPU_LIMIT||"1","--pids-limit","256","--label","webbase-cloud.managed=true","-p", "20000-20100:"+a.port+"/tcp","-e","PORT="+a.port,image],60000);
   const mapped=await docker(["port",a.container,a.port+"/tcp"],30000);
-  const match=mapped.stdout.match(/:(\\d+)\\s*$/m);if(!match)throw new Error("Container started, but Docker did not report a public host port.");
+  const match=mapped.stdout.match(/:(\d+)\s*$/m);if(!match)throw new Error("Container started, but Docker did not report a public host port.");
   const hostPort=Number(match[1]);
   db.prepare("UPDATE apps SET status='running',host_port=?,last_error=NULL WHERE id=?").run(hostPort,a.id);
   log(a.id,"Container started at "+publicUrl(hostPort));
@@ -48,7 +48,7 @@ app.post("/api/apps",auth,async(q,s)=>{
  const name=String(q.body?.name||"").trim(),slug=slugify(q.body?.slug||name),repo=String(q.body?.repo||""),branch=String(q.body?.branch||"main"),port=Number(q.body?.port||3000);
  if(!name||name.length>80||!slug)return s.status(400).json({error:"Enter a valid app name"});
  if(!validRepo(repo))return s.status(400).json({error:"Use a public HTTPS GitHub or GitLab repository URL"});
- if(!/^[\\w./-]{1,100}$/.test(branch))return s.status(400).json({error:"Invalid branch"});
+ if(!/^[\w./-]{1,100}$/.test(branch))return s.status(400).json({error:"Invalid branch"});
  if(!Number.isInteger(port)||port<1||port>65535)return s.status(400).json({error:"Invalid app port"});
  if(db.prepare("SELECT id FROM apps WHERE slug=?").get(slug))return s.status(409).json({error:"App slug already exists"});
  const a={id:crypto.randomUUID(),name,slug,repo,branch,port,status:"queued",container:"wbc-"+slug,created_at:stamp()};
