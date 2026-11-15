@@ -35,7 +35,7 @@ async function deploy(a){
   await docker(["run","-d","--name",a.container,"--restart","unless-stopped","--network",process.env.DOCKER_NETWORK||"webbase-cloud","--memory",process.env.APP_MEMORY_LIMIT||"512m","--cpus",process.env.APP_CPU_LIMIT||"1","--pids-limit","256","--label","webbase-cloud.managed=true","-p", "0.0.0.0:"+hostPort+":"+a.port+"/tcp","-e","PORT="+a.port,image],60000);
   db.prepare("UPDATE apps SET status='running',host_port=?,last_error=NULL WHERE id=?").run(hostPort,a.id);
   log(a.id,"Container started at "+publicUrl(hostPort));
- }catch(e){db.prepare("UPDATE apps SET status='failed',last_error=? WHERE id=?").run(String(e.message).slice(0,900),a.id);log(a.id,"ERROR: "+e.message)}
+ }catch(e){db.prepare("UPDATE apps SET status='failed',host_port=NULL,last_error=? WHERE id=?").run(String(e.message).slice(0,900),a.id);log(a.id,"ERROR: "+e.message)}
 }
 app.get("/api/health",(q,s)=>s.json({ok:true,service:"webbase-cloud"}));
 app.post("/api/auth/login",(q,s)=>{const u=db.prepare("SELECT * FROM admin WHERE email=?").get(String(q.body?.email||"").toLowerCase());if(!u||!bcrypt.compareSync(String(q.body?.password||""),u.password_hash))return s.status(401).json({error:"Invalid email or password"});s.json({token:jwt.sign({email:u.email},SECRET,{expiresIn:"12h"}),email:u.email})});
