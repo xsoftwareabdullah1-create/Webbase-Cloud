@@ -4,8 +4,6 @@ services:
     container_name: webbase-cloud-panel
     restart: unless-stopped
     env_file: .env
-    ports:
-      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
