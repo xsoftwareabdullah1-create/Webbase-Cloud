@@ -27,7 +27,7 @@ Webbase Cloud is a self-hosted application deployment control panel. Connect a p
 - Public GitHub and GitLab repository deployment
 - Docker image builds from a root-level `Dockerfile`
 - App lifecycle controls: deploy, redeploy, stop, restart and delete
-- Deployment status and per-app build/runtime logs
+- Deployment status, Docker health status and per-app build/runtime logs
 - Automatic allocation of public host ports from `20000-20100`
 - Dashboard links to running applications
 - Per-container defaults of 512 MiB memory, 1 CPU and 256 processes
@@ -181,7 +181,7 @@ Create-app request example:
 }
 ```
 
-The repository must be public and contain a `Dockerfile` in its root directory. The app must listen on the configured container port and bind to `0.0.0.0`, not only `127.0.0.1`.
+The repository must be public and contain a `Dockerfile` in its root directory. The app must listen on the configured container port and bind to `0.0.0.0`, not only `127.0.0.1`. If its Dockerfile defines a `HEALTHCHECK`, the dashboard reports `healthy`, `unhealthy` or `starting`; otherwise the health state is `none`.
 
 ## Deployment behavior
 
